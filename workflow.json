@@ -1,0 +1,151 @@
+{
+  "workflow_name": "OutboundLeadGeneration",
+  "description": "Mini 4-step AI agent workflow to find, score, contact, and learn from B2B leads",
+  "version": "1.0",
+  "target_icp": {
+    "industry": "SaaS",
+    "location": "USA",
+    "revenue_range": {
+      "min": 20000000,
+      "max": 200000000
+    }
+  },
+  "steps": [
+    {
+      "id": "prospect_search",
+      "agent": "ProspectSearchAgent",
+      "inputs": {
+        "industry": "SaaS",
+        "location": "USA",
+        "employee_count": {
+          "min": 100,
+          "max": 1000
+        },
+        "signals": ["recent_funding", "hiring_for_sales"]
+      },
+      "instructions": "Search for B2B companies matching ICP criteria using Clay and Apollo APIs. Return structured lead data with company info and key contacts.",
+      "tools": [
+        {
+          "name": "ClayAPI",
+          "config": {
+            "api_key": "{{CLAY_API_KEY}}",
+            "endpoint": "https://api.clay.com/search"
+          }
+        },
+        {
+          "name": "ApolloAPI",
+          "config": {
+            "api_key": "{{APOLLO_API_KEY}}",
+            "endpoint": "https://api.apollo.io/v1/mixed_search"
+          }
+        }
+      ],
+      "output_schema": {
+        "leads": [
+          {
+            "company": "string",
+            "contact_name": "string",
+            "email": "string",
+            "linkedin": "string",
+            "title": "string",
+            "signal": "string"
+          }
+        ]
+      }
+    },
+    {
+      "id": "scoring",
+      "agent": "ScoringAgent",
+      "inputs": {
+        "leads": "{{prospect_search.output.leads}}",
+        "scoring_criteria": {
+          "revenue_weight": 0.3,
+          "employee_count_weight": 0.2,
+          "signal_weight": 0.5
+        }
+      },
+      "instructions": "Score and rank leads based on ICP fit criteria. Assign a score from 0-100 to each lead and sort by highest score.",
+      "tools": [],
+      "output_schema": {
+        "ranked_leads": [
+          {
+            "company": "string",
+            "contact_name": "string",
+            "email": "string",
+            "score": "number",
+            "ranking": "number"
+          }
+        ]
+      }
+    },
+    {
+      "id": "outreach_content",
+      "agent": "OutreachContentAgent",
+      "inputs": {
+        "ranked_leads": "{{scoring.output.ranked_leads}}",
+        "top_n": 10,
+        "persona": "SDR",
+        "tone": "professional and friendly",
+        "template_type": "introduction"
+      },
+      "instructions": "Generate personalized cold email content for top-ranked leads using LLM. Include company-specific context and relevant pain points.",
+      "tools": [
+        {
+          "name": "OpenAI",
+          "config": {
+            "api_key": "{{OPENAI_API_KEY}}",
+            "model": "gpt-4o-mini"
+          }
+        }
+      ],
+      "output_schema": {
+        "messages": [
+          {
+            "lead": "string",
+            "email": "string",
+            "subject": "string",
+            "email_body": "string"
+          }
+        ]
+      }
+    },
+    {
+      "id": "feedback_trainer",
+      "agent": "FeedbackTrainerAgent",
+      "inputs": {
+        "responses": "{{outreach_content.output.messages}}",
+        "campaign_metrics": {
+          "open_rate_threshold": 0.25,
+          "reply_rate_threshold": 0.05
+        }
+      },
+      "instructions": "Analyze campaign performance metrics and suggest improvements to ICP filters, messaging tone, or subject lines. Log recommendations to Google Sheets for human review.",
+      "tools": [
+        {
+          "name": "GoogleSheets",
+          "config": {
+            "credentials_file": "{{GOOGLE_CREDENTIALS_PATH}}",
+            "sheet_id": "{{SHEET_ID}}"
+          }
+        }
+      ],
+      "output_schema": {
+        "recommendations": [
+          {
+            "category": "string",
+            "current_value": "string",
+            "suggested_value": "string",
+            "reason": "string",
+            "confidence": "number"
+          }
+        ],
+        "status": "pending_approval"
+      }
+    }
+  ],
+  "execution_mode": "sequential",
+  "error_handling": {
+    "retry_attempts": 3,
+    "continue_on_error": false
+  }
+}
