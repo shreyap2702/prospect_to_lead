@@ -1,108 +1,176 @@
-import os
 import json
-from typing import Dict, Any, List
-from datetime import datetime
+import os
 import re
 import importlib
+import logging
+from typing import Dict, Any, List
+from datetime import datetime
 
-def load_agent_class(agent_name: str):
-    try:
-        module_name = f"agents.{agent_name.lower()}"
-        module = importlib.import_module(module_name)
-        return getattr(module, agent_name)
-    except (ModuleNotFoundError, AttributeError) as e:
-        raise ImportError(f"Could not load agent class '{agent_name}': {e}")
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+
+# ==============================================================================
+# STEP 1: Load and Parse Workflow
+# ==============================================================================
 
 def load_workflow(workflow_path: str = "workflow.json") -> Dict[str, Any]:
-    print(f"\n{'='*60}")
-    print(f"🔧 Loading Workflow Configuration")
-    print(f"{'='*60}\n")
+    """
+    Load and parse the workflow.json file.
+    
+    Args:
+        workflow_path (str): Path to the workflow JSON file
+        
+    Returns:
+        dict: Parsed workflow configuration
+    """
+    logger.info("=" * 80)
+    logger.info("Loading Workflow Configuration")
+    logger.info("=" * 80)
     
     if not os.path.exists(workflow_path):
-        raise FileNotFoundError(f" Workflow file not found: {workflow_path}")
+        logger.error(f"Workflow file not found: {workflow_path}")
+        raise FileNotFoundError(f"Workflow file not found: {workflow_path}")
     
-    # Load and parse JSON
     try:
         with open(workflow_path, 'r') as file:
             workflow = json.load(file)
         
-        print(f"Successfully loaded: {workflow_path}")
-        print(f"Workflow Name: {workflow.get('workflow_name', 'Unnamed')}")
-        print(f"Description: {workflow.get('description', 'No description')}")
-        print(f"Total Steps: {len(workflow.get('steps', []))}")
+        logger.info(f"Successfully loaded: {workflow_path}")
+        logger.info(f"Workflow Name: {workflow.get('workflow_name', 'Unnamed')}")
+        logger.info(f"Description: {workflow.get('description', 'No description')}")
+        logger.info(f"Total Steps: {len(workflow.get('steps', []))}")
         
         return workflow
         
     except json.JSONDecodeError as e:
-        print(f"Invalid JSON format: {e}")
+        logger.error(f"Invalid JSON format: {e}")
         raise
 
+
 def validate_workflow(workflow: Dict[str, Any]) -> bool:
-    print(f"\n{'='*60}")
-    print(f"🔍 Validating Workflow Structure")
-    print(f"{'='*60}\n")
+    """
+    Validate that the workflow has required fields.
+    
+    Args:
+        workflow (dict): Workflow configuration
+        
+    Returns:
+        bool: True if valid
+    """
+    logger.info("=" * 80)
+    logger.info("Validating Workflow Structure")
+    logger.info("=" * 80)
     
     required_fields = ['workflow_name', 'steps']
     
     for field in required_fields:
         if field not in workflow:
+            logger.error(f"Missing required field: {field}")
             raise ValueError(f"Missing required field: {field}")
-        print(f"Found required field: {field}")
+        logger.debug(f"Found required field: {field}")
     
-    # Check that steps is a list and not empty
     steps = workflow['steps']
-    if not isinstance(steps, list):
-        raise ValueError("'steps' must be a list")
-    
-    if len(steps) == 0:
+    if not isinstance(steps, list) or len(steps) == 0:
+        logger.error("Workflow must have at least one step")
         raise ValueError("Workflow must have at least one step")
     
-    print(f"Workflow has {len(steps)} step(s)")
+    logger.info(f"Workflow contains {len(steps)} step(s)")
     
-    # Validate each step has required fields
-    print(f"\nValidating Individual Steps:")
+    logger.info("Validating Individual Steps:")
     for i, step in enumerate(steps, 1):
         step_id = step.get('id', f'step_{i}')
-        print(f"\n  Step {i}: {step_id}")
+        logger.info(f"  Step {i}: {step_id}")
         
-        # Check required step fields
         required_step_fields = ['id', 'agent', 'inputs', 'instructions']
         for field in required_step_fields:
             if field not in step:
-                raise ValueError(f"❌ Step '{step_id}' missing field: {field}")
-            print(f"{field}: {type(step[field]).__name__}")
+                logger.error(f"Step '{step_id}' missing field: {field}")
+                raise ValueError(f"Step '{step_id}' missing field: {field}")
+            logger.debug(f"    - {field}: present")
     
-    print(f"\nAll validations passed!")
+    logger.info("All validations passed successfully")
     return True
 
-def print_workflow_summary(workflow: Dict[str, Any]) -> None:
-    print(f"\n{'='*60}")
-    print(f"📊 Workflow Execution Plan")
-    print(f"{'='*60}\n")
-    
-    steps = workflow['steps']
-    
-    for i, step in enumerate(steps, 1):
-        step_id = step['id']
-        agent_name = step['agent']
-        
-        print(f"Step {i}: [{step_id}]")
-        print(f"  └─ Agent: {agent_name}")
-        print(f"  └─ Tools: {len(step.get('tools', []))} configured")
-        
-        # Show input dependencies
-        inputs = step.get('inputs', {})
-        dependencies = [v for v in str(inputs).split('{{') if '}}' in v]
-        if dependencies:
-            print(f"  └─ Dependencies: {len(dependencies)} placeholder(s)")
-        
-        if i < len(steps):
-            print(f"     ↓")
-    
-    print(f"\n{'='*60}\n")
 
+# ==============================================================================
+# STEP 2: Dynamic Agent Loading
+# ==============================================================================
+
+def load_agent_class(agent_name: str):
+    """
+    Dynamically import and return an agent class.
+    
+    Args:
+        agent_name (str): Name of the agent class (e.g., "ProspectSearchAgent")
+        
+    Returns:
+        class: The agent class
+        
+    Example:
+        Agent file location: agents/prospect_search_agent.py
+        Class name: ProspectSearchAgent
+    """
+    logger.debug(f"Loading agent: {agent_name}")
+    
+    try:
+        # Convert class name to module name
+        # ProspectSearchAgent -> prospect_search_agent
+        # Insert underscore before each capital letter, then lowercase everything
+        module_name = ''
+        for i, char in enumerate(agent_name):
+            if char.isupper() and i > 0:
+                module_name += '_'
+            module_name += char.lower()
+        
+        # Import from agents package
+        module_path = f"agents.{module_name}"
+        
+        logger.debug(f"  Importing from: {module_path}")
+        
+        module = importlib.import_module(module_path)
+        agent_class = getattr(module, agent_name)
+        
+        logger.info(f"  Successfully loaded agent: {agent_name}")
+        
+        return agent_class
+        
+    except ModuleNotFoundError as e:
+        logger.error(f"Module not found: {module_path}")
+        logger.error(f"Expected file location: agents/{module_name}.py")
+        raise Exception(f"Could not load agent class '{agent_name}': {e}")
+    except AttributeError as e:
+        logger.error(f"Class {agent_name} not found in module {module_path}")
+        raise Exception(f"Could not load agent class '{agent_name}': {e}")
+
+
+# ==============================================================================
+# STEP 3: Placeholder Replacement & Execution
+# ==============================================================================
 
 def resolve_placeholders(data: Any, data_store: Dict[str, Any]) -> Any:
+    """
+    Recursively resolve placeholders like {{step_id.output.field}} in data.
+    
+    Args:
+        data: Input data (can be dict, list, str, or any type)
+        data_store: Dictionary containing outputs from previous steps
+        
+    Returns:
+        Data with all placeholders replaced
+        
+    Example:
+        Input: {"leads": "{{prospect_search.output.leads}}"}
+        data_store: {"prospect_search": {"output": {"leads": [...]}}}
+        Output: {"leads": [...]}
+    """
+    
     if isinstance(data, dict):
         # Process dictionary recursively
         return {key: resolve_placeholders(value, data_store) for key, value in data.items()}
@@ -137,8 +205,8 @@ def resolve_placeholders(data: Any, data_store: Dict[str, Any]) -> Any:
                     result = result.replace(f"{{{{{match}}}}}", str(value))
                     
                 except (KeyError, TypeError) as e:
-                    print(f"Warning: Could not resolve placeholder {{{{match}}}}")
-                    print(f" Available keys: {list(data_store.keys())}")
+                    logger.warning(f"Could not resolve placeholder: {{{{{match}}}}}")
+                    logger.warning(f"Available keys in data_store: {list(data_store.keys())}")
             
             return result
     
@@ -147,10 +215,18 @@ def resolve_placeholders(data: Any, data_store: Dict[str, Any]) -> Any:
 
 
 def execute_workflow(workflow: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Execute the entire workflow step by step.
     
-    print(f"\n{'='*60}")
-    print(f"Starting Workflow Execution")
-    print(f"{'='*60}\n")
+    Args:
+        workflow (dict): Workflow configuration
+        
+    Returns:
+        dict: Complete execution results with all step outputs
+    """
+    logger.info("=" * 80)
+    logger.info("Starting Workflow Execution")
+    logger.info("=" * 80)
     
     steps = workflow['steps']
     data_store = {}  # Store outputs from each step
@@ -165,14 +241,14 @@ def execute_workflow(workflow: Dict[str, Any]) -> Dict[str, Any]:
         step_id = step['id']
         agent_name = step['agent']
         
-        print(f"\n{'─'*60}")
-        print(f"📍 Step {i}/{len(steps)}: {step_id}")
-        print(f"{'─'*60}")
+        logger.info("-" * 80)
+        logger.info(f"Executing Step {i}/{len(steps)}: {step_id}")
+        logger.info("-" * 80)
         
         step_start_time = datetime.now()
         
         try:
-
+            # 1. Load the agent class dynamically
             agent_class = load_agent_class(agent_name)
             
             # 2. Create agent instance with configuration
@@ -184,21 +260,22 @@ def execute_workflow(workflow: Dict[str, Any]) -> Dict[str, Any]:
             agent_instance = agent_class(agent_id=step_id, config=agent_config)
             
             # 3. Resolve placeholders in inputs
-            print(f"\n  🔄 Resolving input placeholders...")
+            logger.info("  Resolving input placeholders")
             raw_inputs = step['inputs']
             resolved_inputs = resolve_placeholders(raw_inputs, data_store)
             
-            print(f"  📥 Inputs prepared for {agent_name}")
+            logger.debug(f"  Inputs prepared for {agent_name}")
             
             # 4. Execute the agent
-            print(f"\n  ▶️  Executing {agent_name}...")
+            logger.info(f"  Running agent: {agent_name}")
             output = agent_instance.run(resolved_inputs)
             
             # 5. Store output in data_store
             data_store[step_id] = {'output': output}
             
-            print(f"\n  ✅ Step {step_id} completed successfully!")
-            print(f"  📤 Output keys: {list(output.keys()) if isinstance(output, dict) else 'N/A'}")
+            logger.info(f"  Step {step_id} completed successfully")
+            if isinstance(output, dict):
+                logger.debug(f"  Output contains keys: {list(output.keys())}")
             
             # Record step execution
             step_result = {
@@ -211,7 +288,7 @@ def execute_workflow(workflow: Dict[str, Any]) -> Dict[str, Any]:
             execution_results['steps'].append(step_result)
             
         except Exception as e:
-            print(f"\n  ❌ Error in step {step_id}: {str(e)}")
+            logger.error(f"Error in step {step_id}: {str(e)}", exc_info=True)
             
             step_result = {
                 'step_id': step_id,
@@ -224,7 +301,7 @@ def execute_workflow(workflow: Dict[str, Any]) -> Dict[str, Any]:
             
             # Decide whether to continue or stop
             if not workflow.get('error_handling', {}).get('continue_on_error', False):
-                print(f"\n❌ Workflow stopped due to error in step: {step_id}")
+                logger.error(f"Workflow stopped due to error in step: {step_id}")
                 break
     
     # Finalize execution results
@@ -243,25 +320,30 @@ def print_execution_summary(results: Dict[str, Any]) -> None:
     Args:
         results (dict): Execution results
     """
-    print(f"\n{'='*60}")
-    print(f"📊 Workflow Execution Summary")
-    print(f"{'='*60}\n")
+    logger.info("=" * 80)
+    logger.info("Workflow Execution Summary")
+    logger.info("=" * 80)
     
-    print(f"Workflow: {results['workflow_name']}")
-    print(f"Status: {results['status'].upper()}")
-    print(f"Start: {results['start_time']}")
-    print(f"End: {results['end_time']}")
-    print(f"\nSteps Executed: {len(results['steps'])}\n")
+    logger.info(f"Workflow: {results['workflow_name']}")
+    logger.info(f"Status: {results['status'].upper()}")
+    logger.info(f"Start Time: {results['start_time']}")
+    logger.info(f"End Time: {results['end_time']}")
+    logger.info(f"Steps Executed: {len(results['steps'])}")
+    logger.info("")
     
     for step in results['steps']:
-        status_icon = "✅" if step['status'] == 'success' else "❌"
-        print(f"{status_icon} {step['step_id']} ({step['agent']})")
-        print(f"   └─ Duration: {step['duration_seconds']:.2f}s")
+        status = "SUCCESS" if step['status'] == 'success' else "FAILED"
+        logger.info(f"[{status}] {step['step_id']} ({step['agent']})")
+        logger.info(f"         Duration: {step['duration_seconds']:.2f}s")
         if step['status'] == 'failed':
-            print(f"   └─ Error: {step.get('error', 'Unknown')}")
+            logger.error(f"         Error: {step.get('error', 'Unknown')}")
     
-    print(f"\n{'='*60}\n")
+    logger.info("=" * 80)
 
+
+# ==============================================================================
+# MAIN EXECUTION
+# ==============================================================================
 
 def main():
     """
@@ -283,10 +365,10 @@ def main():
         with open(output_file, 'w') as f:
             json.dump(results, f, indent=2)
         
-        print(f"💾 Results saved to: {output_file}\n")
+        logger.info(f"Results saved to: {output_file}")
         
     except Exception as e:
-        print(f"\n❌ Fatal Error: {e}\n")
+        logger.critical(f"Fatal Error: {e}", exc_info=True)
         raise
 
 
