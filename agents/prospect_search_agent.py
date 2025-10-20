@@ -8,6 +8,8 @@ import random
 import time
 from typing import Dict, Any, List
 from agents.base_agent import BaseAgent
+from mock_api import query_clay_api, query_apollo_api
+
 
 
 class ProspectSearchAgent(BaseAgent):

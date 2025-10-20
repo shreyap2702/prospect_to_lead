@@ -7,6 +7,7 @@ Uses OpenAI GPT-4o-mini when API key is available, falls back to templates.
 import os
 from typing import Dict, Any, List
 from agents.base_agent import BaseAgent
+from mock_api import mock_gpt_email_generation
 
 
 class OutreachContentAgent(BaseAgent):
@@ -192,8 +193,18 @@ BODY:
             }
             
         except Exception as e:
-            self.log(f"GPT generation failed: {e}. Falling back to template.", level="WARNING")
-            return self._generate_email_template(lead, persona, tone)
+            self.log(f"GPT generation failed: {e}. Using mock GPT instead.", level="WARNING")
+            from mock_api import mock_gpt_email_generation
+            mock_response = mock_gpt_email_generation(lead.get("company", "Unknown"), tone)
+            return {
+                "lead": lead.get("company", "Unknown"),
+                "email": lead.get("email", ""),
+                "contact_name": lead.get("contact_name", ""),
+                "subject": mock_response["subject"],
+                "email_body": mock_response["email_body"],
+                "generated_by": mock_response["generated_by"]
+            }
+
     
     def _generate_email_template(
         self, 
