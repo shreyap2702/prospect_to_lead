@@ -1,0 +1,15 @@
+{
+  "workflow_name": "OutboundLeadGeneration",
+  "start_time": "2025-10-20T10:31:54.591197",
+  "steps": [
+    {
+      "step_id": "prospect_search",
+      "agent": "ProspectSearchAgent",
+      "status": "failed",
+      "error": "Could not load agent class 'ProspectSearchAgent': module 'agents.prospect_search_agent' has no attribute 'ProspectSearchAgent'",
+      "duration_seconds": 0.007093
+    }
+  ],
+  "end_time": "2025-10-20T10:31:54.598398",
+  "status": "partial_failure"
+}
