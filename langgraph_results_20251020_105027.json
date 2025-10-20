@@ -1,0 +1,15 @@
+{
+  "workflow_name": "OutboundLeadGeneration",
+  "start_time": "2025-10-20T10:50:26.515387",
+  "end_time": "2025-10-20T10:50:27.024165",
+  "duration_seconds": 0.508778,
+  "steps_executed": 4,
+  "status": "completed",
+  "errors": [],
+  "final_state": {
+    "leads_count": 8,
+    "ranked_leads_count": 8,
+    "messages_count": 8,
+    "recommendations_count": 16
+  }
+}
